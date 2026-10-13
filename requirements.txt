@@ -1,0 +1,10 @@
+# Apple Silicon Mac (MLX). Versions this project was tested with (Python 3.14).
+mlx==0.32.0
+mlx-vlm==0.3.10
+transformers==5.12.1
+torch==2.13.0            # PaddleOCR-VL's image processor needs torch + torchvision
+torchvision==0.28.0
+pillow==12.3.0
+fastapi==0.139.0
+uvicorn==0.51.0
+python-multipart==0.0.32 # photo uploads in the web app

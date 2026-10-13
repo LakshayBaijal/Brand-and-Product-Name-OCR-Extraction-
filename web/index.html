@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brand Extractor</title>
+<style>
+/* layout: one column - "Add products" (drop zone + editable product cards) above "Results" (live table) */
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --fg: #1a2130; --muted: #5c6677; --line: #d8dde5;
+  --accent: #24598f; --accent-fg: #ffffff; --accent-soft: #e2ebf5;
+  --ok: #1c7547; --ok-soft: #dcf1e5; --bad: #ad2a20; --bad-soft: #f9e1de; --warn: #8a5a00; --warn-soft: #fbefd5;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161e; --panel: #19202b; --fg: #e4e8ef; --muted: #98a3b4; --line: #2b3542;
+    --accent: #7fb0e6; --accent-fg: #0d1520; --accent-soft: #1f3046;
+    --ok: #6ccf97; --ok-soft: #1a3326; --bad: #f08c84; --bad-soft: #3c1e1b; --warn: #e3b25c; --warn-soft: #3a2d12;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--sans); padding-inline: 16px; padding-block: 20px 48px; }
+main { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+header.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+h1 { font-size: 22px; margin: 0; font-weight: 650; }
+h2 { font-size: 15px; margin: 0; font-weight: 650; }
+.sub { color: var(--muted); margin: 2px 0 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.spacer { flex: 1; }
+label.field { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+select, input[type=text] { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+input[type=text] { min-width: 0; width: 100%; }
+button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); padding: 7px 12px; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+button.primary:disabled { opacity: .45; cursor: not-allowed; }
+button.link { border: 0; background: none; color: var(--accent); padding: 4px 6px; }
+button.icon { padding: 2px 7px; line-height: 1.2; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pill { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px 16px; text-align: center; display: grid; gap: 8px; justify-items: center; background: var(--bg); }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop strong { font-size: 15px; }
+.hint { color: var(--muted); font-size: 13px; max-width: 70ch; }
+.drafts { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 8px; min-width: 0; background: var(--panel); }
+.card .head { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+.thumb { position: relative; width: 64px; height: 64px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+.thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.thumb button { position: absolute; top: 2px; right: 2px; padding: 0 5px; font-size: 12px; line-height: 16px; background: rgba(0,0,0,.6); color: #fff; border: 0; border-radius: 4px; }
+.addph { width: 64px; height: 64px; border-style: dashed; color: var(--muted); font-size: 20px; }
+.empty { color: var(--muted); padding: 8px 0; }
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-top: 1px solid var(--line); }
+thead th { border-top: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+td.brand { font-weight: 650; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.mini { display: flex; gap: 4px; }
+.mini img { width: 36px; height: 36px; object-fit: contain; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+.dim { color: var(--muted); }
+details.ocr { margin-top: 6px; }
+details.ocr summary { cursor: pointer; color: var(--accent); font-size: 12.5px; }
+.ocrgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin-top: 8px; }
+.ocrgrid pre { margin: 0; font: 12px/1.4 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+.ocrgrid .cap { font-size: 12px; color: var(--muted); margin-bottom: 4px; overflow-wrap: anywhere; }
+.err { color: var(--bad); font-size: 13px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (max-width: 520px) { .card .head { grid-template-columns: 1fr auto; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>Brand &amp; Product Name Extractor</h1>
+      <p class="sub">PaddleOCR-VL reads every photo of a product; rules pick the brand and product name. Photos can be in any order.</p>
+    </div>
+    <span id="model" class="pill warn" role="status" aria-live="polite">Loading model…</span>
+  </header>
+
+  <section class="panel" aria-labelledby="add-h">
+    <div class="row">
+      <h2 id="add-h">1. Add products</h2>
+      <span class="spacer"></span>
+      <label class="field" for="group">Group photos
+        <select id="group">
+          <option value="auto">by folder / file name</option>
+          <option value="each">one product per photo</option>
+          <option value="all">all into one product</option>
+        </select>
+      </label>
+      <label class="field" for="defcat">Category
+        <select id="defcat">
+          <option value="grocery">Grocery</option>
+          <option value="electronics">Electronics</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="drop" class="drop">
+      <strong>Drop product photos or folders here</strong>
+      <div class="row" style="justify-content:center">
+        <button type="button" id="pick-files">Choose photos</button>
+        <button type="button" id="pick-folder">Choose a folder</button>
+        <button type="button" id="new-product">+ Empty product</button>
+      </div>
+      <div class="hint">A folder with one subfolder per product works best. Loose photos are grouped by name:
+        <code>Image_1_X.jpg</code>, <code>Image_2_X.jpg</code> or <code>shampoo_1.jpg</code>, <code>shampoo_2.jpg</code> become one product each.</div>
+      <input id="files" type="file" accept="image/*" multiple hidden>
+      <input id="folder" type="file" webkitdirectory multiple hidden>
+    </div>
+
+    <div id="drafts" class="drafts"></div>
+    <div class="row">
+      <button type="button" class="primary" id="run" disabled>Extract</button>
+      <button type="button" id="clear-drafts">Clear products</button>
+      <span id="draft-msg" class="hint"></span>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="res-h">
+    <div class="row">
+      <h2 id="res-h">2. Results</h2>
+      <span id="counts" class="dim"></span>
+      <span class="spacer"></span>
+      <button type="button" id="csv">Download CSV</button>
+      <button type="button" id="json">Download JSON</button>
+      <button type="button" id="clear-done">Clear finished</button>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr><th scope="col">Product</th><th scope="col">Photos</th><th scope="col">Brand</th><th scope="col">Product name</th><th scope="col">Status</th><th scope="col">Time</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
+        <tbody id="results"><tr><td colspan="7" class="empty">No products extracted yet.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var IMG = /\.(jpe?g|png|webp|bmp|gif|tiff?|heic|heif)$/i;
+  var drafts = [];          // {id, name, category, files: [File], urls: [string]}
+  var results = [];
+  var seq = 0, polling = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  // ------------------------------------------------------------------ grouping
+  function productKey(file) {
+    var rel = file.webkitRelativePath || file._rel || "";
+    var parts = rel.split("/").filter(Boolean);
+    if (parts.length >= 3) return parts[parts.length - 2];             // folder/<product>/photo.jpg
+    var base = file.name.replace(/\.[^.]+$/, "");
+    var m = base.match(/^image[ _-]?\d{1,2}[ _-](.+)$/i);               // Image_1_X
+    if (m) return m[1];
+    m = base.match(/^(.*\D)[ _-]?\(?(\d{1,2})\)?$/);                    // shampoo_1, shampoo (2)
+    if (m && m[1].replace(/[ _(-]+$/, "").length >= 2) return m[1].replace(/[ _(-]+$/, "");
+    if (parts.length === 2) return parts[0];                           // <product>/photo.jpg
+    return base;
+  }
+
+  function addFiles(list) {
+    var files = Array.prototype.filter.call(list, function (f) { return IMG.test(f.name) || /^image\//.test(f.type); });
+    if (!files.length) { $("draft-msg").textContent = "No image files found in that selection."; return; }
+    var mode = $("group").value, cat = $("defcat").value, groups = {};
+    files.sort(function (a, b) { return (a.webkitRelativePath || a._rel || a.name).localeCompare(b.webkitRelativePath || b._rel || b.name, undefined, { numeric: true }); });
+    files.forEach(function (f, i) {
+      var key = mode === "all" ? "Product " + (drafts.length + 1) : mode === "each" ? f.name.replace(/\.[^.]+$/, "") + "#" + i : productKey(f);
+      (groups[key] = groups[key] || []).push(f);
+    });
+    Object.keys(groups).forEach(function (key) {
+      var name = key.replace(/#\d+$/, "");
+      var d = mode === "each" ? null : drafts.find(function (x) { return x.name === name; });
+      if (!d) { d = { id: ++seq, name: name, category: cat, files: [], urls: [] }; drafts.push(d); }
+      groups[key].forEach(function (f) { d.files.push(f); d.urls.push(URL.createObjectURL(f)); });
+    });
+    $("draft-msg").textContent = files.length + " photo" + (files.length > 1 ? "s" : "") + " added.";
+    renderDrafts();
+  }
+
+  // Drag-and-drop of folders: walk directory entries so subfolder names are kept.
+  function readEntries(entry, path, out) {
+    return new Promise(function (resolve) {
+      if (entry.isFile) {
+        entry.file(function (f) { f._rel = path + f.name; out.push(f); resolve(); }, function () { resolve(); });
+      } else if (entry.isDirectory) {
+        var reader = entry.createReader(), all = [];
+        (function next() {
+          reader.readEntries(function (batch) {
+            if (!batch.length) {
+              Promise.all(all.map(function (e) { return readEntries(e, path + entry.name + "/", out); })).then(resolve);
+            } else { all = all.concat(Array.prototype.slice.call(batch)); next(); }
+          }, function () { resolve(); });
+        })();
+      } else resolve();
+    });
+  }
+
+  // ------------------------------------------------------------------ drafts UI
+  function renderDrafts() {
+    var box = $("drafts");
+    box.innerHTML = "";
+    drafts.forEach(function (d) {
+      var card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML =
+        '<div class="head">' +
+          '<input type="text" aria-label="Product name" value="' + esc(d.name) + '">' +
+          '<select aria-label="Category"><option value="grocery">Grocery</option><option value="electronics">Electronics</option></select>' +
+          '<button type="button" class="icon" title="Remove product" aria-label="Remove product">✕</button>' +
+        '</div>' +
+        '<div class="thumbs"></div>';
+      var inp = card.querySelector("input"), sel = card.querySelector("select");
+      sel.value = d.category;
+      inp.addEventListener("input", function () { d.name = inp.value; });
+      sel.addEventListener("change", function () { d.category = sel.value; });
+      card.querySelector(".head button").addEventListener("click", function () { removeDraft(d.id); });
+      var th = card.querySelector(".thumbs");
+      d.files.forEach(function (f, i) {
+        var t = document.createElement("div");
+        t.className = "thumb";
+        t.innerHTML = '<img alt="' + esc(f.name) + '" src="' + d.urls[i] + '"><button type="button" aria-label="Remove photo ' + esc(f.name) + '">✕</button>';
+        t.querySelector("button").addEventListener("click", function () {
+          URL.revokeObjectURL(d.urls[i]); d.files.splice(i, 1); d.urls.splice(i, 1); renderDrafts();
+        });
+        th.appendChild(t);
+      });
+      var add = document.createElement("button");
+      add.type = "button"; add.className = "thumb addph"; add.textContent = "+"; add.title = "Add photos to this product";
+      add.setAttribute("aria-label", "Add photos to " + d.name);
+      add.addEventListener("click", function () {
+        var picker = document.createElement("input");
+        picker.type = "file"; picker.accept = "image/*"; picker.multiple = true;
+        picker.addEventListener("change", function () {
+          Array.prototype.forEach.call(picker.files, function (f) { d.files.push(f); d.urls.push(URL.createObjectURL(f)); });
+          renderDrafts();
+        });
+        picker.click();
+      });
+      th.appendChild(add);
+      box.appendChild(card);
+    });
+    var n = drafts.filter(function (d) { return d.files.length; }).length;
+    $("run").disabled = n === 0;
+    $("run").textContent = n ? "Extract " + n + " product" + (n > 1 ? "s" : "") : "Extract";
+  }
+
+  function removeDraft(id) {
+    drafts = drafts.filter(function (d) {
+      if (d.id === id) { d.urls.forEach(URL.revokeObjectURL); return false; }
+      return true;
+    });
+    renderDrafts();
+  }
+
+  // ------------------------------------------------------------------ submit
+  function submitAll() {
+    var todo = drafts.filter(function (d) { return d.files.length; });
+    $("run").disabled = true;
+    $("draft-msg").textContent = "Uploading " + todo.length + " product" + (todo.length > 1 ? "s" : "") + "…";
+    var errors = [];
+    todo.reduce(function (p, d) {
+      return p.then(function () {
+        var fd = new FormData();
+        fd.append("name", d.name || "Product");
+        fd.append("category", d.category);
+        d.files.forEach(function (f) { fd.append("photos", f, f.name); });
+        return fetch("/api/products", { method: "POST", body: fd }).then(function (r) {
+          if (!r.ok) return r.json().then(function (j) { throw new Error(j.detail || r.statusText); });
+          removeDraft(d.id);
+          refresh();
+        }).catch(function (e) { errors.push(d.name + ": " + e.message); });
+      });
+    }, Promise.resolve()).then(function () {
+      $("draft-msg").textContent = errors.length ? "Not added - " + errors.join("; ") : "Added to the queue.";
+      renderDrafts();
+      startPolling();
+    });
+  }
+
+  // ------------------------------------------------------------------ results
+  function statusCell(j) {
+    if (j.status === "done") return '<span class="pill ok">Done</span>';
+    if (j.status === "error") return '<span class="pill bad">Error</span><div class="err">' + esc(j.error) + "</div>";
+    if (j.status === "running") return '<span class="pill">Reading photo ' + Math.min(j.done_photos + 1, j.n_photos) + " of " + j.n_photos + "</span>";
+    return '<span class="pill warn">Queued</span>';
+  }
+
+  function renderResults() {
+    var body = $("results");
+    if (!results.length) { body.innerHTML = '<tr><td colspan="7" class="empty">No products extracted yet.</td></tr>'; $("counts").textContent = ""; return; }
+    var c = { queued: 0, running: 0, done: 0, error: 0 };
+    results.forEach(function (j) { c[j.status]++; });
+    $("counts").textContent = c.done + " done" + (c.running + c.queued ? ", " + (c.running + c.queued) + " in progress" : "") + (c.error ? ", " + c.error + " failed" : "");
+    var open = {};
+    body.querySelectorAll("details.ocr[open]").forEach(function (d) { open[d.dataset.id] = true; });
+    body.innerHTML = results.map(function (j) {
+      var r = j.result || {};
+      var thumbs = "";
+      for (var i = 1; i <= Math.min(j.n_photos, 5); i++) thumbs += '<img alt="" loading="lazy" src="/api/products/' + j.id + "/thumb/" + i + '">';
+      if (j.n_photos > 5) thumbs += '<span class="dim">+' + (j.n_photos - 5) + "</span>";
+      var ocr = "";
+      if (r.photos) {
+        ocr = '<details class="ocr" data-id="' + j.id + '"' + (open[j.id] ? " open" : "") + "><summary>Text read from each photo</summary><div class=\"ocrgrid\">" +
+          r.photos.map(function (p) { return '<div><div class="cap">' + esc(p.file) + " · " + p.seconds + " s</div><pre>" + esc(p.ocr_text || "(no text)") + "</pre></div>"; }).join("") +
+          "</div></details>";
+      }
+      return "<tr>" +
+        "<td><div>" + esc(j.name) + '</div><div class="dim">' + esc(j.category) + "</div></td>" +
+        '<td><div class="mini">' + thumbs + "</div></td>" +
+        '<td class="brand">' + (j.status === "done" ? esc(r.brand || "—") : "") + "</td>" +
+        "<td>" + (j.status === "done" ? esc(r.product_name || "—") : "") + ocr + "</td>" +
+        "<td>" + statusCell(j) + "</td>" +
+        '<td class="num">' + (j.seconds != null ? j.seconds.toFixed(1) + " s" : "") + "</td>" +
+        '<td><button type="button" class="link" data-del="' + j.id + '"' + (j.status === "running" ? " disabled" : "") + ">Remove</button></td>" +
+        "</tr>";
+    }).join("");
+    body.querySelectorAll("[data-del]").forEach(function (b) {
+      b.addEventListener("click", function () { fetch("/api/products/" + b.dataset.del, { method: "DELETE" }).then(refresh); });
+    });
+  }
+
+  function refresh() {
+    return fetch("/api/products").then(function (r) { return r.json(); }).then(function (j) {
+      results = j; renderResults();
+      if (!results.some(function (x) { return x.status === "queued" || x.status === "running"; })) stopPolling();
+    }).catch(function () {});
+  }
+  function startPolling() { if (!polling) polling = setInterval(refresh, 1200); }
+  function stopPolling() { if (polling) { clearInterval(polling); polling = null; } }
+
+  function modelStatus() {
+    fetch("/api/status").then(function (r) { return r.json(); }).then(function (s) {
+      var el = $("model"), m = s.model;
+      if (m.status === "ready") { el.className = "pill ok"; el.textContent = "Model ready"; }
+      else if (m.status === "error") { el.className = "pill bad"; el.textContent = "Model failed to load"; el.title = m.error || ""; }
+      else { el.className = "pill warn"; el.textContent = "Loading model… (first start downloads ~0.9 GB)"; setTimeout(modelStatus, 2000); }
+    }).catch(function () { setTimeout(modelStatus, 3000); });
+  }
+
+  // ------------------------------------------------------------------ export
+  function download(name, text, type) {
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: type }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  function csvCell(v) { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+
+  // ------------------------------------------------------------------ wiring
+  $("pick-files").addEventListener("click", function () { $("files").click(); });
+  $("pick-folder").addEventListener("click", function () { $("folder").click(); });
+  $("files").addEventListener("change", function (e) { addFiles(e.target.files); e.target.value = ""; });
+  $("folder").addEventListener("change", function (e) { addFiles(e.target.files); e.target.value = ""; });
+  $("new-product").addEventListener("click", function () {
+    drafts.push({ id: ++seq, name: "Product " + (drafts.length + 1), category: $("defcat").value, files: [], urls: [] });
+    renderDrafts();
+  });
+  $("clear-drafts").addEventListener("click", function () { drafts.forEach(function (d) { d.urls.forEach(URL.revokeObjectURL); }); drafts = []; renderDrafts(); $("draft-msg").textContent = ""; });
+  $("run").addEventListener("click", submitAll);
+  $("clear-done").addEventListener("click", function () { fetch("/api/products", { method: "DELETE" }).then(refresh); });
+  $("csv").addEventListener("click", function () {
+    var rows = [["product", "category", "brand", "product_name", "photos", "seconds", "status", "photo_files"]];
+    results.forEach(function (j) {
+      var r = j.result || {};
+      rows.push([j.name, j.category, r.brand, r.product_name, j.n_photos, j.seconds, j.status, (j.photo_names || []).join("; ")]);
+    });
+    download("brand_extraction.csv", rows.map(function (r) { return r.map(csvCell).join(","); }).join("\n"), "text/csv");
+  });
+  $("json").addEventListener("click", function () {
+    download("brand_extraction.json", JSON.stringify(results.map(function (j) {
+      return { product: j.name, category: j.category, status: j.status, error: j.error, photos: j.photo_names, result: j.result };
+    }), null, 2), "application/json");
+  });
+
+  var drop = $("drop");
+  ["dragenter", "dragover"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function (e) {
+    var items = e.dataTransfer.items, entries = [];
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      for (var i = 0; i < items.length; i++) { var en = items[i].webkitGetAsEntry(); if (en) entries.push(en); }
+      var out = [];
+      Promise.all(entries.map(function (en) { return readEntries(en, "", out); })).then(function () { addFiles(out); });
+    } else addFiles(e.dataTransfer.files);
+  });
+
+  renderDrafts();
+  modelStatus();
+  refresh().then(function () {
+    if (results.some(function (x) { return x.status === "queued" || x.status === "running"; })) startPolling();
+  });
+})();
+</script>
+</body>
+</html>
